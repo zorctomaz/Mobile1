@@ -11,6 +11,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Lokacijo uporabljamo, da ti pokažemo ponudbe pridelkov v bližini in izračunamo razdaljo.",
         "NSPhotoLibraryUsageDescription": "Dostop do galerije uporabljamo, da lahko objavi sliko svojega pridelka."
+      },
+      "config": {
+        "googleMapsApiKey": "REPLACE_WITH_YOUR_IOS_GOOGLE_MAPS_API_KEY"
       }
     },
     "android": {
@@ -25,7 +28,12 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "READ_MEDIA_IMAGES"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"

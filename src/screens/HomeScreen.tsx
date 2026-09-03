@@ -16,6 +16,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as store from "../data/store";
 import { GeoPoint, Listing, PRODUCE_CATEGORIES } from "../types";
 import ListingCard from "../components/ListingCard";
+import ListingsMapView from "../components/ListingsMapView";
 import { colors, radius, spacing } from "../theme";
 import { useAuth } from "../context/AuthContext";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -31,6 +32,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [myLocation, setMyLocation] = useState<GeoPoint | undefined>(
     user?.location
   );
@@ -53,6 +55,15 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     setMyLocation(user?.location);
   }, [user?.location]);
+
+  // The map should default to centering on the user, so ask for location as
+  // soon as they switch to it (if we don't already have one).
+  useEffect(() => {
+    if (viewMode === "map" && !myLocation && locationStatus === "idle") {
+      useMyLocation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -172,10 +183,51 @@ export default function HomeScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
         )}
+
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            style={[styles.toggleButton, viewMode === "list" && styles.toggleButtonActive]}
+            onPress={() => setViewMode("list")}
+          >
+            <Ionicons
+              name="list"
+              size={15}
+              color={viewMode === "list" ? "#fff" : colors.textMuted}
+            />
+            <Text
+              style={[styles.toggleText, viewMode === "list" && styles.toggleTextActive]}
+            >
+              Seznam
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleButton, viewMode === "map" && styles.toggleButtonActive]}
+            onPress={() => setViewMode("map")}
+          >
+            <Ionicons
+              name="map-outline"
+              size={15}
+              color={viewMode === "map" ? "#fff" : colors.textMuted}
+            />
+            <Text
+              style={[styles.toggleText, viewMode === "map" && styles.toggleTextActive]}
+            >
+              Zemljevid
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
+      ) : viewMode === "map" ? (
+        <ListingsMapView
+          listings={filtered}
+          myLocation={myLocation}
+          onSelectListing={(listingId) =>
+            navigation.navigate("ListingDetail", { listingId })
+          }
+        />
       ) : (
         <FlatList
           data={filtered}
@@ -261,6 +313,31 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
     fontWeight: "600",
   },
+  viewToggle: {
+    flexDirection: "row",
+    backgroundColor: colors.card,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 3,
+    marginTop: spacing.sm,
+    alignSelf: "flex-start",
+  },
+  toggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.pill,
+  },
+  toggleButtonActive: { backgroundColor: colors.primary },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textMuted,
+    marginLeft: 4,
+  },
+  toggleTextActive: { color: "#fff" },
   listContent: { padding: spacing.md, paddingBottom: 96 },
   empty: { alignItems: "center", marginTop: spacing.xl * 2 },
   emptyText: {
