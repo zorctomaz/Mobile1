@@ -1,4 +1,4 @@
-# Deli pridelke 🌱
+# deljenjePridelkov 🌱
 
 Mobilna aplikacija (React Native / Expo) za izmenjavo presežkov pridelkov med sosedi —
 objaviš, kaj imaš preveč, kaj bi rad dobil v zameno, in se s klepetom v aplikaciji
