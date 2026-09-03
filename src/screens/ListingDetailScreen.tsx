@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import {
-  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -62,20 +61,6 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
     }
   }
 
-  async function markAsTraded() {
-    if (!listing) return;
-    Alert.alert("Označi kot zamenjano", "Ali je bila zamenjava opravljena?", [
-      { text: "Prekliči", style: "cancel" },
-      {
-        text: "Da, zamenjano",
-        onPress: async () => {
-          await store.setListingStatus(listing.id, "traded");
-          setListing({ ...listing, status: "traded" });
-        },
-      },
-    ]);
-  }
-
   if (!listing) {
     return (
       <View style={styles.center}>
@@ -129,29 +114,29 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           <Text style={styles.ownerName}>{owner?.name ?? "Neznan uporabnik"}</Text>
         </View>
 
-        {isOwner ? (
-          listing.status === "available" ? (
-            <TouchableOpacity style={styles.secondaryButton} onPress={markAsTraded}>
-              <Text style={styles.secondaryButtonText}>Označi kot zamenjano</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.doneBanner}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-              <Text style={styles.doneBannerText}>Ta ponudba je zaključena.</Text>
-            </View>
-          )
+        {listing.status === "traded" ? (
+          <View style={styles.doneBanner}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+            <Text style={styles.doneBannerText}>
+              Ta ponudba je zamenjana — oba udeleženca sta prejela redkvico 🫜.
+            </Text>
+          </View>
+        ) : isOwner ? (
+          <View style={styles.infoBanner}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.primaryDark} />
+            <Text style={styles.infoBannerText}>
+              Ko se s kupcem dogovoriš, zamenjavo v pogovoru potrdita oba —
+              šele takrat ponudba izgine in oba prejmeta redkvico.
+            </Text>
+          </View>
         ) : (
           <TouchableOpacity
             style={[styles.button, starting && styles.buttonDisabled]}
             onPress={proposeTrade}
-            disabled={starting || listing.status !== "available"}
+            disabled={starting}
           >
             <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
-            <Text style={styles.buttonText}>
-              {listing.status === "available"
-                ? "Predlagaj zamenjavo"
-                : "Ponudba ni več na voljo"}
-            </Text>
+            <Text style={styles.buttonText}>Predlagaj zamenjavo</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -225,15 +210,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginLeft: spacing.xs,
   },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: colors.primary,
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#EEF3EC",
     borderRadius: radius.sm,
-    paddingVertical: spacing.md,
-    alignItems: "center",
+    padding: spacing.md,
     marginTop: spacing.xl,
   },
-  secondaryButtonText: { color: colors.primary, fontWeight: "700", fontSize: 15 },
+  infoBannerText: {
+    flex: 1,
+    color: colors.primaryDark,
+    fontSize: 13,
+    lineHeight: 18,
+    marginLeft: spacing.xs,
+  },
   doneBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -243,6 +234,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
   },
   doneBannerText: {
+    flex: 1,
     color: colors.primaryDark,
     fontWeight: "600",
     marginLeft: spacing.xs,

@@ -12,6 +12,8 @@ export type User = {
   avatarUri?: string;
   location?: GeoPoint;
   createdAt: number;
+  /** Reward earned each time a trade is confirmed by both sides. */
+  radishCount: number;
 };
 
 export type ListingStatus = "available" | "pending" | "traded";
@@ -37,7 +39,13 @@ export type Conversation = {
   createdAt: number;
   lastMessageAt: number;
   lastMessagePreview?: string;
+  /** User ids that have confirmed the trade in this conversation. The trade
+   * completes once it contains both participants. */
+  tradeConfirmedBy: string[];
 };
+
+/** Sender id used for automated messages (trade confirmations, etc). */
+export const SYSTEM_SENDER_ID = "system";
 
 export type Message = {
   id: string;

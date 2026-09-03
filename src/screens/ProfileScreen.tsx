@@ -60,6 +60,15 @@ export default function ProfileScreen({ navigation }: Props) {
               </View>
             )}
 
+            <View style={styles.radishBadge}>
+              <Text style={styles.radishBadgeEmoji}>🫜</Text>
+              <Text style={styles.radishBadgeText}>
+                {user?.radishCount ?? 0}{" "}
+                {(user?.radishCount ?? 0) === 1 ? "redkvica" : "redkvic"} za
+                opravljene zamenjave
+              </Text>
+            </View>
+
             <TouchableOpacity style={styles.logoutButton} onPress={confirmLogout}>
               <Ionicons name="log-out-outline" size={16} color={colors.danger} />
               <Text style={styles.logoutText}>Odjava</Text>
@@ -113,6 +122,17 @@ const styles = StyleSheet.create({
   email: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   locationRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.xs },
   locationText: { fontSize: 12, color: colors.textMuted, marginLeft: 4 },
+  radishBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FBF1E1",
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    marginTop: spacing.md,
+  },
+  radishBadgeEmoji: { fontSize: 16, marginRight: spacing.xs },
+  radishBadgeText: { fontSize: 12, fontWeight: "700", color: colors.accent },
   logoutButton: {
     flexDirection: "row",
     alignItems: "center",

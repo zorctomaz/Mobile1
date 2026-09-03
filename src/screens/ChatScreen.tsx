@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -12,7 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as store from "../data/store";
-import { Message } from "../types";
+import { Conversation, Listing, Message, SYSTEM_SENDER_ID, User } from "../types";
 import { colors, radius, spacing } from "../theme";
 import { useAuth } from "../context/AuthContext";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -22,10 +24,14 @@ type Props = NativeStackScreenProps<MainStackParamList, "Chat">;
 
 export default function ChatScreen({ route, navigation }: Props) {
   const { conversationId, listingTitle } = route.params;
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [otherUser, setOtherUser] = useState<User | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
@@ -33,9 +39,22 @@ export default function ChatScreen({ route, navigation }: Props) {
   }, [navigation, listingTitle]);
 
   const load = useCallback(async () => {
-    const msgs = await store.getMessages(conversationId);
+    const [msgs, conv] = await Promise.all([
+      store.getMessages(conversationId),
+      store.getConversationById(conversationId),
+    ]);
     setMessages(msgs);
-  }, [conversationId]);
+    setConversation(conv);
+    if (conv) {
+      const otherId = conv.participantIds.find((id) => id !== user?.id);
+      const [l, other] = await Promise.all([
+        store.getListingById(conv.listingId),
+        otherId ? store.getUserById(otherId) : Promise.resolve(null),
+      ]);
+      setListing(l);
+      setOtherUser(other);
+    }
+  }, [conversationId, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,6 +74,42 @@ export default function ChatScreen({ route, navigation }: Props) {
       setSending(false);
     }
   }
+
+  async function handleConfirmTrade() {
+    if (!user) return;
+    Alert.alert(
+      "Potrdi zamenjavo",
+      "S tem potrjuješ, da je bila zamenjava dogovorjena in opravljena. Ponudba bo izginila, oba pa prejmeta redkvico 🫜.",
+      [
+        { text: "Prekliči", style: "cancel" },
+        {
+          text: "Potrdi",
+          onPress: async () => {
+            setConfirming(true);
+            try {
+              await store.confirmTrade(conversationId, user.id);
+              await load();
+              await refreshUser();
+              requestAnimationFrame(() =>
+                listRef.current?.scrollToEnd({ animated: true })
+              );
+            } finally {
+              setConfirming(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  const iConfirmed = !!user && !!conversation?.tradeConfirmedBy.includes(user.id);
+  const tradedHere =
+    listing?.status === "traded" &&
+    !!conversation &&
+    conversation.participantIds.every((id) =>
+      conversation.tradeConfirmedBy.includes(id)
+    );
+  const tradedElsewhere = listing?.status === "traded" && !tradedHere;
 
   return (
     <KeyboardAvoidingView
@@ -76,6 +131,13 @@ export default function ChatScreen({ route, navigation }: Props) {
           </View>
         }
         renderItem={({ item }) => {
+          if (item.senderId === SYSTEM_SENDER_ID) {
+            return (
+              <View style={styles.systemRow}>
+                <Text style={styles.systemText}>{item.text}</Text>
+              </View>
+            );
+          }
           const mine = item.senderId === user?.id;
           return (
             <View
@@ -93,6 +155,42 @@ export default function ChatScreen({ route, navigation }: Props) {
           );
         }}
       />
+
+      <View style={styles.tradeBar}>
+        {tradedHere ? (
+          <View style={[styles.tradeBanner, styles.tradeBannerDone]}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+            <Text style={styles.tradeBannerText}>
+              Zamenjava zaključena — oba sta prejela redkvico 🫜
+            </Text>
+          </View>
+        ) : tradedElsewhere ? (
+          <View style={styles.tradeBanner}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+            <Text style={[styles.tradeBannerText, { color: colors.textMuted }]}>
+              Ta ponudba je bila medtem zamenjana z nekom drugim.
+            </Text>
+          </View>
+        ) : iConfirmed ? (
+          <View style={styles.tradeBanner}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={styles.tradeBannerText}>
+              Čakaš, da {otherUser?.name ?? "druga oseba"} potrdi zamenjavo …
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.confirmButton, confirming && styles.confirmButtonDisabled]}
+            onPress={handleConfirmTrade}
+            disabled={confirming}
+          >
+            <Ionicons name="checkmark-done" size={18} color="#fff" />
+            <Text style={styles.confirmButtonText}>
+              {confirming ? "Potrjujem …" : "Potrdi zamenjavo"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       <View style={styles.inputRow}>
         <TextInput
@@ -138,6 +236,51 @@ const styles = StyleSheet.create({
   },
   bubbleText: { color: colors.text, fontSize: 15 },
   bubbleTextMine: { color: "#fff" },
+  systemRow: { alignItems: "center", marginVertical: spacing.sm },
+  systemText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.primaryDark,
+    backgroundColor: "#EEF3EC",
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    textAlign: "center",
+    overflow: "hidden",
+  },
+  tradeBar: {
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    backgroundColor: colors.card,
+  },
+  tradeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+  },
+  tradeBannerDone: {},
+  tradeBannerText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.primaryDark,
+    marginLeft: spacing.xs,
+  },
+  confirmButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm + 2,
+  },
+  confirmButtonDisabled: { opacity: 0.6 },
+  confirmButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
+    marginLeft: spacing.xs,
+  },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",

@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Conversation, Listing, Message, User } from "../types";
+import { Conversation, Listing, Message, SYSTEM_SENDER_ID, User } from "../types";
 
 /**
  * Lightweight local "backend" for the MVP, backed by AsyncStorage.
@@ -58,6 +58,7 @@ export async function registerUser(
     email: normalizedEmail,
     password,
     createdAt: Date.now(),
+    radishCount: 0,
   };
   users.push(user);
   await writeJson(KEYS.users, users);
@@ -184,6 +185,7 @@ export async function getOrCreateConversation(
     participantIds: [userAId, userBId],
     createdAt: Date.now(),
     lastMessageAt: Date.now(),
+    tradeConfirmedBy: [],
   };
   conversations.push(conversation);
   await writeJson(KEYS.conversations, conversations);
@@ -246,6 +248,69 @@ export async function sendMessage(
   return message;
 }
 
+export type ConfirmTradeResult = {
+  conversation: Conversation;
+  /** True only on the call that brings the second participant's
+   * confirmation in — i.e. the trade just completed right now. */
+  completed: boolean;
+};
+
+/**
+ * Records that `userId` confirms the trade in `conversationId`. Once both
+ * participants have confirmed, the listing is marked as traded and each
+ * participant is awarded one radish 🫜.
+ */
+export async function confirmTrade(
+  conversationId: string,
+  userId: string
+): Promise<ConfirmTradeResult> {
+  const conversations = await readJson<Conversation[]>(KEYS.conversations, []);
+  const idx = conversations.findIndex((c) => c.id === conversationId);
+  if (idx === -1) throw new Error("Pogovor ne obstaja.");
+
+  const conversation = conversations[idx];
+  if (!conversation.participantIds.includes(userId)) {
+    throw new Error("Nisi udeležen/-a v tem pogovoru.");
+  }
+
+  const alreadyConfirmed = conversation.tradeConfirmedBy.includes(userId);
+  const tradeConfirmedBy = alreadyConfirmed
+    ? conversation.tradeConfirmedBy
+    : [...conversation.tradeConfirmedBy, userId];
+
+  const updated: Conversation = { ...conversation, tradeConfirmedBy };
+  conversations[idx] = updated;
+  await writeJson(KEYS.conversations, conversations);
+
+  if (alreadyConfirmed) {
+    return { conversation: updated, completed: false };
+  }
+
+  const bothConfirmed = conversation.participantIds.every((id) =>
+    tradeConfirmedBy.includes(id)
+  );
+  if (!bothConfirmed) {
+    return { conversation: updated, completed: false };
+  }
+
+  await setListingStatus(conversation.listingId, "traded");
+  for (const participantId of conversation.participantIds) {
+    const participant = await getUserById(participantId);
+    if (participant) {
+      await updateUser(participantId, {
+        radishCount: (participant.radishCount ?? 0) + 1,
+      });
+    }
+  }
+  await sendMessage(
+    conversationId,
+    SYSTEM_SENDER_ID,
+    "🫜 Zamenjava je potrjena z obeh strani! Oba sta prejela redkvico."
+  );
+
+  return { conversation: updated, completed: true };
+}
+
 // ---------------------------------------------------------------------------
 // Demo seed data (first launch only) so the browse screen isn't empty.
 // ---------------------------------------------------------------------------
@@ -263,6 +328,7 @@ export async function seedDemoDataOnce(): Promise<void> {
       password: "demo1234",
       location: { latitude: 46.0569, longitude: 14.5058, label: "Ljubljana" },
       createdAt: Date.now(),
+      radishCount: 0,
     };
     users.push(demoUser);
     await writeJson(KEYS.users, users);

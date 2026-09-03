@@ -12,7 +12,10 @@ dogovoriš za prevzem.
   preklop med seznamom in **zemljevidom** (Google Maps, privzeto centriran na
   uporabnikovo lokacijo, z zoomom/premikanjem in oznakami objavljenih ponudb)
 - Sporočila: klepet po ponudbi za dogovor o zamenjavi
-- Profil: pregled lastnih objav, označevanje ponudbe kot zamenjane, odjava
+- **Potrditev zamenjave**: ko sta se v pogovoru dogovorila, zamenjavo v klepetu
+  potrdita **oba** udeleženca — šele takrat ponudba izgine iz brskanja, oba pa
+  prejmeta nagrado 🫜 redkvico (prikazano v profilu)
+- Profil: pregled lastnih objav, števec prejetih redkvic, odjava
 
 ## Zagon
 
