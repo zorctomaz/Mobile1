@@ -8,10 +8,16 @@ import { formatDistance } from "../utils/geo";
 type Props = {
   listing: Listing;
   distanceKm?: number;
+  isOwn?: boolean;
   onPress: () => void;
 };
 
-export default function ListingCard({ listing, distanceKm, onPress }: Props) {
+export default function ListingCard({
+  listing,
+  distanceKm,
+  isOwn,
+  onPress,
+}: Props) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       {listing.imageUri ? (
@@ -27,6 +33,11 @@ export default function ListingCard({ listing, distanceKm, onPress }: Props) {
           <Text style={styles.title} numberOfLines={1}>
             {listing.title}
           </Text>
+          {isOwn && (
+            <View style={[styles.badge, styles.ownBadge]}>
+              <Text style={[styles.badgeText, styles.ownBadgeText]}>Tvoja</Text>
+            </View>
+          )}
           {listing.status !== "available" && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
@@ -87,6 +98,8 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
   },
   badgeText: { fontSize: 10, fontWeight: "700", color: colors.textMuted },
+  ownBadge: { backgroundColor: colors.primary },
+  ownBadgeText: { color: "#fff" },
   meta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   description: { fontSize: 13, color: colors.text, marginTop: spacing.xs },
   footerRow: {

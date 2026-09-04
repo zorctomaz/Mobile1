@@ -97,7 +97,7 @@ export default function HomeScreen({ navigation }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let result = listings.filter((l) => l.ownerId !== user?.id);
+    let result = listings;
     if (category) result = result.filter((l) => l.category === category);
     if (q) {
       result = result.filter(
@@ -247,6 +247,7 @@ export default function HomeScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <ListingCard
               listing={item}
+              isOwn={item.ownerId === user?.id}
               distanceKm={
                 myLocation && item.location
                   ? distanceKm(myLocation, item.location)
