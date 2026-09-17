@@ -14,6 +14,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import * as store from "../data/store";
+import LocationPickerMap from "../components/LocationPickerMap";
 import { GeoPoint, PRODUCE_CATEGORIES } from "../types";
 import { colors, radius, spacing } from "../theme";
 import { useAuth } from "../context/AuthContext";
@@ -175,18 +176,33 @@ export default function CreateListingScreen({ navigation }: Props) {
         />
 
         <Text style={styles.label}>Lokacija prevzema</Text>
-        <TouchableOpacity style={styles.locationButton} onPress={detectLocation}>
+        <Text style={styles.locationHint}>
+          Tapni na zemljevid, da izbereš lokacijo prevzema — lahko tudi
+          drugačno od tvoje trenutne (npr. vrt, tržnica, dogovorjena točka).
+        </Text>
+
+        <LocationPickerMap
+          selectedLocation={location}
+          centerHint={user?.location}
+          onPick={setLocation}
+        />
+
+        <TouchableOpacity
+          style={styles.locationButton}
+          onPress={detectLocation}
+          disabled={locating}
+        >
           <Ionicons name="location-outline" size={16} color={colors.primary} />
           <Text style={styles.locationButtonText}>
-            {locating
-              ? "Zaznavanje …"
-              : location
-              ? `Lokacija nastavljena (${location.latitude.toFixed(
-                  3
-                )}, ${location.longitude.toFixed(3)})`
-              : "Uporabi trenutno lokacijo"}
+            {locating ? "Zaznavanje …" : "Uporabi trenutno lokacijo"}
           </Text>
         </TouchableOpacity>
+
+        {location && (
+          <Text style={styles.locationCoords}>
+            Izbrano: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+          </Text>
+        )}
 
         {error && <Text style={styles.error}>{error}</Text>}
 
@@ -260,18 +276,31 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 12, color: colors.text, fontWeight: "600" },
   chipTextActive: { color: "#fff" },
+  locationHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+    lineHeight: 17,
+  },
   locationButton: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "flex-start",
     backgroundColor: "#EEF3EC",
     borderRadius: radius.sm,
     padding: spacing.sm + 2,
+    marginTop: spacing.sm,
   },
   locationButtonText: {
     marginLeft: spacing.xs,
     color: colors.primaryDark,
     fontWeight: "600",
     fontSize: 13,
+  },
+  locationCoords: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   error: { color: colors.danger, marginTop: spacing.md, fontSize: 13 },
   button: {

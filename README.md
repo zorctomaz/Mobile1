@@ -7,7 +7,9 @@ dogovoriš za prevzem.
 ## Funkcionalnosti (MVP)
 
 - Registracija in prijava (lokalna, brez zunanjega strežnika)
-- Objava pridelka: slika, opis, količina, kategorija, kaj želiš v zameno, lokacija
+- Objava pridelka: slika, opis, količina, kategorija, kaj želiš v zameno,
+  lokacija prevzema — izbereš jo s tapom na zemljevid (ni nujno tvoja trenutna
+  lokacija) ali z gumbom "Uporabi trenutno lokacijo"
 - Brskanje po ponudbah: iskanje, filtriranje po kategoriji, razvrščanje po bližini,
   preklop med seznamom in **zemljevidom** (OpenStreetMap prek WebView — brez API
   ključa, deluje takoj v Expo Go — privzeto centriran na uporabnikovo lokacijo,
