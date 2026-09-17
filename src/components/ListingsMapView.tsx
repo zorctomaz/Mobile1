@@ -5,12 +5,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { GeoPoint, Listing } from "../types";
 import { colors, radius, spacing } from "../theme";
 
-// Fallback center (Ljubljana) used until we know the user's location.
-const DEFAULT_CENTER: GeoPoint = { latitude: 46.0569, longitude: 14.5058 };
-
 type Props = {
   listings: Listing[];
-  myLocation?: GeoPoint;
+  /** Required — the caller must only mount this once the user's real
+   * location is known, so the map is always centered on them, never on a
+   * placeholder location. */
+  myLocation: GeoPoint;
   onSelectListing: (listingId: string) => void;
 };
 
@@ -85,23 +85,18 @@ export default function ListingsMapView({
         originWhitelist={["*"]}
       />
 
-      {myLocation && (
-        <TouchableOpacity
-          style={styles.locateButton}
-          onPress={centerOnMe}
-          accessibilityLabel="Prikaži mojo lokacijo"
-        >
-          <Ionicons name="locate" size={20} color={colors.primary} />
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={styles.locateButton}
+        onPress={centerOnMe}
+        accessibilityLabel="Prikaži mojo lokacijo"
+      >
+        <Ionicons name="locate" size={20} color={colors.primary} />
+      </TouchableOpacity>
     </View>
   );
 }
 
-function buildMapHtml(markers: MarkerData[], myLocation?: GeoPoint): string {
-  const center = myLocation ?? DEFAULT_CENTER;
-  const zoom = myLocation ? 13 : 8;
-
+function buildMapHtml(markers: MarkerData[], myLocation: GeoPoint): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -124,21 +119,19 @@ function buildMapHtml(markers: MarkerData[], myLocation?: GeoPoint): string {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   var markers = ${JSON.stringify(markers)};
-  var myLocation = ${JSON.stringify(myLocation ?? null)};
+  var myLocation = ${JSON.stringify(myLocation)};
 
-  var map = L.map('map', { zoomControl: true }).setView([${center.latitude}, ${center.longitude}], ${zoom});
+  var map = L.map('map', { zoomControl: true }).setView([myLocation.latitude, myLocation.longitude], 13);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap prispevalci'
   }).addTo(map);
 
-  if (myLocation) {
-    L.circleMarker([myLocation.latitude, myLocation.longitude], {
-      radius: 8, color: '${colors.primary}', fillColor: '${colors.primary}',
-      fillOpacity: 0.9, weight: 2
-    }).addTo(map).bindPopup('Tvoja lokacija');
-  }
+  L.circleMarker([myLocation.latitude, myLocation.longitude], {
+    radius: 8, color: '${colors.primary}', fillColor: '${colors.primary}',
+    fillOpacity: 0.9, weight: 2
+  }).addTo(map).bindPopup('Tvoja lokacija');
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -163,9 +156,7 @@ function buildMapHtml(markers: MarkerData[], myLocation?: GeoPoint): string {
   }
 
   window.centerOnMe = function () {
-    if (myLocation) {
-      map.setView([myLocation.latitude, myLocation.longitude], 14);
-    }
+    map.setView([myLocation.latitude, myLocation.longitude], 14);
   };
 </script>
 </body>

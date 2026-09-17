@@ -221,13 +221,35 @@ export default function HomeScreen({ navigation }: Props) {
       {loading ? (
         <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
       ) : viewMode === "map" ? (
-        <ListingsMapView
-          listings={filtered}
-          myLocation={myLocation}
-          onSelectListing={(listingId) =>
-            navigation.navigate("ListingDetail", { listingId })
-          }
-        />
+        myLocation ? (
+          <ListingsMapView
+            listings={filtered}
+            myLocation={myLocation}
+            onSelectListing={(listingId) =>
+              navigation.navigate("ListingDetail", { listingId })
+            }
+          />
+        ) : (
+          <View style={styles.mapPlaceholder}>
+            {locationStatus === "denied" ? (
+              <>
+                <Ionicons name="location-outline" size={36} color={colors.textMuted} />
+                <Text style={styles.mapPlaceholderText}>
+                  Zemljevid centriramo na tvojo lokacijo — za to dovoli dostop
+                  do lokacije.
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={useMyLocation}>
+                  <Text style={styles.retryButtonText}>Poskusi znova</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.mapPlaceholderText}>Iščem tvojo lokacijo …</Text>
+              </>
+            )}
+          </View>
+        )
       ) : (
         <FlatList
           data={filtered}
@@ -339,6 +361,26 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   toggleTextActive: { color: "#fff" },
+  mapPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+  },
+  mapPlaceholderText: {
+    color: colors.textMuted,
+    textAlign: "center",
+    marginTop: spacing.sm,
+    fontSize: 13,
+  },
+  retryButton: {
+    marginTop: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+  },
+  retryButtonText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   listContent: { padding: spacing.md, paddingBottom: 96 },
   empty: { alignItems: "center", marginTop: spacing.xl * 2 },
   emptyText: {
