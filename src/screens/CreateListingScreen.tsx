@@ -62,7 +62,9 @@ export default function CreateListingScreen({ navigation }: Props) {
         setError("Dostop do lokacije je bil zavrnjen.");
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({});
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
       setLocation({
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,

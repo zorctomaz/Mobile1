@@ -79,7 +79,9 @@ export default function HomeScreen({ navigation }: Props) {
         setLocationStatus("denied");
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({});
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
       const point: GeoPoint = {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
