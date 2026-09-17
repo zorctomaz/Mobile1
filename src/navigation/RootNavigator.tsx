@@ -18,6 +18,7 @@ import CreateListingScreen from "../screens/CreateListingScreen";
 import MessagesScreen from "../screens/MessagesScreen";
 import ChatScreen from "../screens/ChatScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import MyListingsScreen from "../screens/MyListingsScreen";
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -38,19 +39,26 @@ export type MessagesStackParamList = {
 
 export type ProfileStackParamList = {
   Profile: undefined;
+};
+
+export type MyListingsStackParamList = {
+  MyListings: undefined;
   ListingDetail: { listingId: string };
+  CreateListing: undefined;
 };
 
 // Union of every route reachable from any tab, used by screens that can be
 // pushed from more than one place (ListingDetail, CreateListing, Chat).
 export type MainStackParamList = HomeStackParamList &
   MessagesStackParamList &
-  ProfileStackParamList;
+  ProfileStackParamList &
+  MyListingsStackParamList;
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const MessagesStack = createNativeStackNavigator<MessagesStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
+const MyListingsStack = createNativeStackNavigator<MyListingsStackParamList>();
 const Tab = createBottomTabNavigator();
 
 const screenOptions: NativeStackNavigationOptions = {
@@ -120,12 +128,29 @@ function ProfileStackNavigator() {
         component={ProfileScreen}
         options={{ title: "Profil" }}
       />
-      <ProfileStack.Screen
+    </ProfileStack.Navigator>
+  );
+}
+
+function MyListingsStackNavigator() {
+  return (
+    <MyListingsStack.Navigator screenOptions={screenOptions}>
+      <MyListingsStack.Screen
+        name="MyListings"
+        component={MyListingsScreen}
+        options={{ title: "Moji oglasi" }}
+      />
+      <MyListingsStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen}
         options={{ title: "Podrobnosti" }}
       />
-    </ProfileStack.Navigator>
+      <MyListingsStack.Screen
+        name="CreateListing"
+        component={CreateListingScreen}
+        options={{ title: "Nova objava", presentation: "modal" }}
+      />
+    </MyListingsStack.Navigator>
   );
 }
 
@@ -143,6 +168,8 @@ function MainTabs() {
               ? "home-outline"
               : route.name === "MessagesTab"
               ? "chatbubble-ellipses-outline"
+              : route.name === "MyListingsTab"
+              ? "pricetag-outline"
               : "person-outline";
           return <Ionicons name={icon as any} size={size} color={color} />;
         },
@@ -157,6 +184,11 @@ function MainTabs() {
         name="MessagesTab"
         component={MessagesStackNavigator}
         options={{ title: "Sporočila" }}
+      />
+      <Tab.Screen
+        name="MyListingsTab"
+        component={MyListingsStackNavigator}
+        options={{ title: "Moji oglasi" }}
       />
       <Tab.Screen
         name="ProfileTab"

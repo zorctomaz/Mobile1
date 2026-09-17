@@ -18,7 +18,8 @@ dogovoriš za prevzem.
 - **Potrditev zamenjave**: ko sta se v pogovoru dogovorila, zamenjavo v klepetu
   potrdita **oba** udeleženca — šele takrat ponudba izgine iz brskanja, oba pa
   prejmeta nagrado 🫜 redkvico (prikazano v profilu)
-- Profil: pregled lastnih objav, števec prejetih redkvic, odjava
+- Moji oglasi: ločen zavihek s pregledom lastnih objav (in gumbom za novo objavo)
+- Profil: identiteta, števec prejetih redkvic, odjava
 
 ## Zagon
 
@@ -42,7 +43,7 @@ ponudbami, da aplikacija ni prazna.
   bi bilo treba spreminjati zaslone.
 - `src/context/AuthContext.tsx` — stanje prijavljenega uporabnika.
 - `src/navigation/RootNavigator.tsx` — Auth stack (prijava/registracija) in
-  glavne zavihke (Brskaj / Sporočila / Profil).
+  glavne zavihke (Brskaj / Sporočila / Moji oglasi / Profil).
 - `src/screens/*` — posamezni zasloni.
 - `src/components/ListingsMapView.tsx` — zemljevid je Leaflet (OpenStreetMap)
   stran, naložena v `react-native-webview`, ne nativni zemljevid. Namenoma —
