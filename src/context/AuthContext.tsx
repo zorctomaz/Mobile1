@@ -53,7 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const current = await store.getCurrentUser();
-    setUser(current);
+    // Only apply a real result. A transient AsyncStorage read glitch (e.g.
+    // right as the OS shows the location-permission dialog) must never look
+    // like a logout — logout() is the only place allowed to clear `user`.
+    if (current) {
+      setUser(current);
+    }
   }, []);
 
   const value = useMemo(
