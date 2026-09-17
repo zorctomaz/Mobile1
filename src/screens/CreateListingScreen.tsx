@@ -18,8 +18,11 @@ import LocationPickerMap from "../components/LocationPickerMap";
 import { GeoPoint, PRODUCE_CATEGORIES } from "../types";
 import { colors, radius, spacing } from "../theme";
 import { useAuth } from "../context/AuthContext";
+import { withTimeout } from "../utils/withTimeout";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../navigation/RootNavigator";
+
+const LOCATION_TIMEOUT_MS = 15000;
 
 type Props = NativeStackScreenProps<MainStackParamList, "CreateListing">;
 
@@ -57,19 +60,33 @@ export default function CreateListingScreen({ navigation }: Props) {
 
   async function detectLocation() {
     setLocating(true);
+    setError(null);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setError("Dostop do lokacije je bil zavrnjen.");
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      setLocation({
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      });
+
+      let point: GeoPoint | null = null;
+      try {
+        const pos = await withTimeout(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+          LOCATION_TIMEOUT_MS
+        );
+        point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      } catch {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) {
+          point = { latitude: last.coords.latitude, longitude: last.coords.longitude };
+        }
+      }
+
+      if (!point) {
+        setError("Lokacije ni bilo mogoče zaznati — preveri, da je GPS omogočen.");
+        return;
+      }
+      setLocation(point);
     } catch {
       setError("Lokacije ni bilo mogoče zaznati.");
     } finally {

@@ -22,6 +22,9 @@ import { useAuth } from "../context/AuthContext";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../navigation/RootNavigator";
 import { distanceKm } from "../utils/geo";
+import { withTimeout } from "../utils/withTimeout";
+
+const LOCATION_TIMEOUT_MS = 15000;
 
 type Props = NativeStackScreenProps<MainStackParamList, "Home">;
 
@@ -37,7 +40,7 @@ export default function HomeScreen({ navigation }: Props) {
     user?.location
   );
   const [locationStatus, setLocationStatus] = useState<
-    "idle" | "requesting" | "granted" | "denied"
+    "idle" | "requesting" | "granted" | "denied" | "error"
   >("idle");
 
   const load = useCallback(async () => {
@@ -56,14 +59,17 @@ export default function HomeScreen({ navigation }: Props) {
     setMyLocation(user?.location);
   }, [user?.location]);
 
-  // The map should default to centering on the user, so ask for location as
-  // soon as they switch to it (if we don't already have one).
+  // Fetch a fresh GPS fix automatically as soon as the app opens (not only
+  // when the user switches to the map), so both the distance sort and the
+  // map are ready by the time they're needed. Any location saved on the
+  // user record (e.g. seeded demo data) is treated as a starting point
+  // only, never as a substitute for a real fix.
   useEffect(() => {
-    if (viewMode === "map" && !myLocation && locationStatus === "idle") {
+    if (locationStatus === "idle") {
       useMyLocation();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
+  }, []);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -79,13 +85,28 @@ export default function HomeScreen({ navigation }: Props) {
         setLocationStatus("denied");
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      const point: GeoPoint = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      };
+
+      let point: GeoPoint | null = null;
+      try {
+        const pos = await withTimeout(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+          LOCATION_TIMEOUT_MS
+        );
+        point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      } catch {
+        // GPS fix took too long (e.g. no clear sky view) — fall back to the
+        // last known position rather than leaving the user stuck waiting.
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) {
+          point = { latitude: last.coords.latitude, longitude: last.coords.longitude };
+        }
+      }
+
+      if (!point) {
+        setLocationStatus("error");
+        return;
+      }
+
       setMyLocation(point);
       setLocationStatus("granted");
       if (user) {
@@ -93,7 +114,7 @@ export default function HomeScreen({ navigation }: Props) {
         await refreshUser();
       }
     } catch {
-      setLocationStatus("denied");
+      setLocationStatus("error");
     }
   }
 
@@ -173,15 +194,23 @@ export default function HomeScreen({ navigation }: Props) {
           ))}
         </ScrollView>
 
-        {!myLocation && (
-          <TouchableOpacity style={styles.locationBanner} onPress={useMyLocation}>
-            <Ionicons name="location-outline" size={16} color={colors.primary} />
+        {locationStatus !== "idle" && locationStatus !== "granted" && (
+          <TouchableOpacity
+            style={styles.locationBanner}
+            onPress={useMyLocation}
+            disabled={locationStatus === "requesting"}
+          >
+            {locationStatus === "requesting" ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="location-outline" size={16} color={colors.primary} />
+            )}
             <Text style={styles.locationBannerText}>
               {locationStatus === "requesting"
-                ? "Iskanje lokacije …"
+                ? "Iščem GPS lokacijo …"
                 : locationStatus === "denied"
-                ? "Dostop zavrnjen — dovoli lokacijo za razdalje"
-                : "Omogoči lokacijo za sortiranje po bližini"}
+                ? "Dostop do lokacije zavrnjen — tapni za dovoljenje"
+                : "Lokacije ni bilo mogoče pridobiti — tapni za nov poskus"}
             </Text>
           </TouchableOpacity>
         )}
@@ -233,12 +262,13 @@ export default function HomeScreen({ navigation }: Props) {
           />
         ) : (
           <View style={styles.mapPlaceholder}>
-            {locationStatus === "denied" ? (
+            {locationStatus === "denied" || locationStatus === "error" ? (
               <>
                 <Ionicons name="location-outline" size={36} color={colors.textMuted} />
                 <Text style={styles.mapPlaceholderText}>
-                  Zemljevid centriramo na tvojo lokacijo — za to dovoli dostop
-                  do lokacije.
+                  {locationStatus === "denied"
+                    ? "Zemljevid centriramo na tvojo lokacijo — za to dovoli dostop do lokacije."
+                    : "Lokacije trenutno ni bilo mogoče pridobiti — preveri, da je GPS na napravi omogočen."}
                 </Text>
                 <TouchableOpacity style={styles.retryButton} onPress={useMyLocation}>
                   <Text style={styles.retryButtonText}>Poskusi znova</Text>
