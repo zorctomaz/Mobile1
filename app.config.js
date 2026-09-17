@@ -13,6 +13,7 @@ module.exports = {
     userInterfaceStyle: "light",
     ios: {
       supportsTablet: true,
+      bundleIdentifier: "com.deljenjepridelkov.app",
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
           "Lokacijo uporabljamo, da ti pokažemo ponudbe pridelkov v bližini in izračunamo razdaljo.",
@@ -24,6 +25,7 @@ module.exports = {
       },
     },
     android: {
+      package: "com.deljenjepridelkov.app",
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/android-icon-foreground.png",
