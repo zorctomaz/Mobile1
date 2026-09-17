@@ -8,7 +8,10 @@ dogovoriš za prevzem.
 
 - Registracija in prijava (lokalna, brez zunanjega strežnika)
 - Objava pridelka: slika, opis, količina, kategorija, kaj želiš v zameno, lokacija
-- Brskanje po ponudbah: iskanje, filtriranje po kategoriji, razvrščanje po bližini
+- Brskanje po ponudbah: iskanje, filtriranje po kategoriji, razvrščanje po bližini,
+  preklop med seznamom in **zemljevidom** (OpenStreetMap prek WebView — brez API
+  ključa, deluje takoj v Expo Go — privzeto centriran na uporabnikovo lokacijo,
+  z zoomom/premikanjem in oznakami objavljenih ponudb)
 - Sporočila: klepet po ponudbi za dogovor o zamenjavi
 - **Potrditev zamenjave**: ko sta se v pogovoru dogovorila, zamenjavo v klepetu
   potrdita **oba** udeleženca — šele takrat ponudba izgine iz brskanja, oba pa
@@ -39,6 +42,10 @@ ponudbami, da aplikacija ni prazna.
 - `src/navigation/RootNavigator.tsx` — Auth stack (prijava/registracija) in
   glavne zavihke (Brskaj / Sporočila / Profil).
 - `src/screens/*` — posamezni zasloni.
+- `src/components/ListingsMapView.tsx` — zemljevid je Leaflet (OpenStreetMap)
+  stran, naložena v `react-native-webview`, ne nativni zemljevid. Namenoma —
+  izogne se potrebi po Google Maps API ključu in dev buildu, obenem pa deluje
+  identično v Expo Go na Androidu in iOS-u.
 
 ## Znane omejitve MVP-ja
 
