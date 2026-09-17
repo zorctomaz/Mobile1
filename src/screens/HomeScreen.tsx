@@ -24,7 +24,9 @@ import type { MainStackParamList } from "../navigation/RootNavigator";
 import { distanceKm } from "../utils/geo";
 import { withTimeout } from "../utils/withTimeout";
 
-const LOCATION_TIMEOUT_MS = 15000;
+// A cold GPS fix can genuinely take a while (worse indoors/urban canyon),
+// so give it real time rather than giving up and showing a stale fallback.
+const LOCATION_TIMEOUT_MS = 25000;
 
 type Props = NativeStackScreenProps<MainStackParamList, "Home">;
 
@@ -86,6 +88,20 @@ export default function HomeScreen({ navigation }: Props) {
         return;
       }
 
+      // Fast path: if the OS already has a cached fix (from this or any
+      // other app), show it immediately so the UI isn't just spinning —
+      // it'll be replaced by the precise fix below once that's ready.
+      let approxPoint: GeoPoint | null = null;
+      try {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) {
+          approxPoint = { latitude: last.coords.latitude, longitude: last.coords.longitude };
+          setMyLocation(approxPoint);
+        }
+      } catch {
+        // no cached fix available yet — fine, we just wait for the real one
+      }
+
       let point: GeoPoint | null = null;
       try {
         const pos = await withTimeout(
@@ -94,12 +110,9 @@ export default function HomeScreen({ navigation }: Props) {
         );
         point = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
       } catch {
-        // GPS fix took too long (e.g. no clear sky view) — fall back to the
-        // last known position rather than leaving the user stuck waiting.
-        const last = await Location.getLastKnownPositionAsync();
-        if (last) {
-          point = { latitude: last.coords.latitude, longitude: last.coords.longitude };
-        }
+        // Precise fix timed out — keep the approximate one if we have it
+        // rather than failing outright.
+        point = approxPoint;
       }
 
       if (!point) {

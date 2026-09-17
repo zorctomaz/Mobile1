@@ -321,12 +321,17 @@ export async function seedDemoDataOnce(): Promise<void> {
 
   const users = await readJson<User[]>(KEYS.users, []);
   if (users.length === 0) {
+    // Demo LISTINGS need real coordinates to be meaningful pins on the map —
+    // but the demo USER intentionally gets no location of their own. That
+    // field represents "where I am right now" and must only ever come from
+    // a real GPS fix; seeding it here previously made a fetch failure look
+    // like the app had (wrongly) detected Ljubljana.
+    const ljubljana = { latitude: 46.0569, longitude: 14.5058, label: "Ljubljana" };
     const demoUser: User = {
       id: uid("user"),
       name: "Vrtnarija Sonček",
       email: "demo@vrt.si",
       password: "demo1234",
-      location: { latitude: 46.0569, longitude: 14.5058, label: "Ljubljana" },
       createdAt: Date.now(),
       radishCount: 0,
     };
@@ -343,7 +348,7 @@ export async function seedDemoDataOnce(): Promise<void> {
         quantity: "~3 kg",
         category: "Zelenjava",
         wantedInExchange: "Jabolka ali jajca",
-        location: demoUser.location,
+        location: ljubljana,
         createdAt: Date.now(),
         status: "available",
       },
@@ -355,7 +360,7 @@ export async function seedDemoDataOnce(): Promise<void> {
         quantity: "5 kg",
         category: "Zelenjava",
         wantedInExchange: "Karkoli sezonsko",
-        location: demoUser.location,
+        location: ljubljana,
         createdAt: Date.now(),
         status: "available",
       },

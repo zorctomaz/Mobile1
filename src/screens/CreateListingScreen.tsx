@@ -22,7 +22,9 @@ import { withTimeout } from "../utils/withTimeout";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../navigation/RootNavigator";
 
-const LOCATION_TIMEOUT_MS = 15000;
+// A cold GPS fix can genuinely take a while (worse indoors/urban canyon),
+// so give it real time rather than giving up and showing a stale fallback.
+const LOCATION_TIMEOUT_MS = 25000;
 
 type Props = NativeStackScreenProps<MainStackParamList, "CreateListing">;
 
