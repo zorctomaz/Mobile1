@@ -1,41 +1,58 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  type User as FirebaseUser,
+} from "firebase/auth";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  runTransaction,
+} from "firebase/firestore";
+import { auth, db } from "../firebase";
 import { Conversation, Listing, Message, SYSTEM_SENDER_ID, User } from "../types";
 
 /**
- * Lightweight local "backend" for the MVP, backed by AsyncStorage.
- *
- * Everything here is written behind a small async API (getListings,
- * createListing, sendMessage, ...) so that swapping this module for a real
- * network backend later doesn't require touching any screen.
+ * Backend layer, now backed by Firebase (Firestore + Authentication) so
+ * data is shared across every device instead of living only on one phone's
+ * AsyncStorage. Every screen goes through this module rather than touching
+ * Firestore directly — that's what made this swap possible without
+ * touching a single screen.
  */
 
-const KEYS = {
-  users: "@mobile1/users",
-  session: "@mobile1/session",
-  listings: "@mobile1/listings",
-  conversations: "@mobile1/conversations",
-  messages: "@mobile1/messages",
-  seeded: "@mobile1/seeded",
-} as const;
-
-function uid(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
-}
-
-async function readJson<T>(key: string, fallback: T): Promise<T> {
-  const raw = await AsyncStorage.getItem(key);
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+function authErrorMessage(code: string): string {
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "Uporabnik s tem e-poštnim naslovom že obstaja.";
+    case "auth/invalid-email":
+      return "E-poštni naslov ni veljaven.";
+    case "auth/weak-password":
+      return "Geslo je prešibko (vsaj 6 znakov).";
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "Napačen e-poštni naslov ali geslo.";
+    case "auth/network-request-failed":
+      return "Ni internetne povezave — preveri omrežje in poskusi znova.";
+    default:
+      return "Nekaj je šlo narobe. Poskusi znova.";
   }
 }
 
-async function writeJson<T>(key: string, value: T): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
+function asError(e: unknown): Error {
+  const code = (e as { code?: string } | null)?.code;
+  return new Error(code ? authErrorMessage(code) : "Nekaj je šlo narobe.");
 }
 
 // ---------------------------------------------------------------------------
@@ -47,172 +64,189 @@ export async function registerUser(
   email: string,
   password: string
 ): Promise<User> {
-  const users = await readJson<User[]>(KEYS.users, []);
-  const normalizedEmail = email.trim().toLowerCase();
-  if (users.some((u) => u.email === normalizedEmail)) {
-    throw new Error("Uporabnik s tem e-poštnim naslovom že obstaja.");
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const credential = await createUserWithEmailAndPassword(
+      auth,
+      normalizedEmail,
+      password
+    );
+    const user: User = {
+      id: credential.user.uid,
+      name: name.trim(),
+      email: normalizedEmail,
+      createdAt: Date.now(),
+      radishCount: 0,
+    };
+    await setDoc(doc(db, "users", user.id), user);
+    return user;
+  } catch (e) {
+    throw asError(e);
   }
-  const user: User = {
-    id: uid("user"),
-    name: name.trim(),
-    email: normalizedEmail,
-    password,
-    createdAt: Date.now(),
-    radishCount: 0,
-  };
-  users.push(user);
-  await writeJson(KEYS.users, users);
-  await writeJson(KEYS.session, user.id);
-  return user;
 }
 
-export async function loginUser(
-  email: string,
-  password: string
-): Promise<User> {
-  const users = await readJson<User[]>(KEYS.users, []);
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = users.find((u) => u.email === normalizedEmail);
-  if (!user || user.password !== password) {
-    throw new Error("Napačen e-poštni naslov ali geslo.");
+export async function loginUser(email: string, password: string): Promise<User> {
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const credential = await signInWithEmailAndPassword(
+      auth,
+      normalizedEmail,
+      password
+    );
+    const user = await getUserById(credential.user.uid);
+    if (!user) throw new Error("Profil uporabnika ni bil najden.");
+    return user;
+  } catch (e) {
+    throw asError(e);
   }
-  await writeJson(KEYS.session, user.id);
-  return user;
 }
 
 export async function logout(): Promise<void> {
-  await AsyncStorage.removeItem(KEYS.session);
+  await signOut(auth);
 }
 
-export async function getCurrentUser(): Promise<User | null> {
-  const id = await AsyncStorage.getItem(KEYS.session);
-  if (!id) return null;
-  const users = await readJson<User[]>(KEYS.users, []);
-  return users.find((u) => u.id === id) ?? null;
+/** Resolves once Firebase Auth's initial state is known (or on any later
+ * change) — this both serves "who is logged in right now" on app start and
+ * doubles as a plain refresh for an already-known session. */
+export function getCurrentUser(): Promise<User | null> {
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      unsubscribe();
+      if (!fbUser) {
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(await getUserById(fbUser.uid));
+      } catch {
+        resolve(null);
+      }
+    });
+  });
 }
 
 export async function updateUser(
   id: string,
   patch: Partial<Omit<User, "id">>
 ): Promise<User> {
-  const users = await readJson<User[]>(KEYS.users, []);
-  const idx = users.findIndex((u) => u.id === id);
-  if (idx === -1) throw new Error("Uporabnik ne obstaja.");
-  users[idx] = { ...users[idx], ...patch };
-  await writeJson(KEYS.users, users);
-  return users[idx];
+  await updateDoc(doc(db, "users", id), patch);
+  const updated = await getUserById(id);
+  if (!updated) throw new Error("Uporabnik ne obstaja.");
+  return updated;
 }
 
 export async function getUserById(id: string): Promise<User | null> {
-  const users = await readJson<User[]>(KEYS.users, []);
-  return users.find((u) => u.id === id) ?? null;
+  const snap = await getDoc(doc(db, "users", id));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as User) : null;
 }
 
 // ---------------------------------------------------------------------------
 // Listings
 // ---------------------------------------------------------------------------
 
+const listingsCol = collection(db, "listings");
+
 export async function getListings(): Promise<Listing[]> {
-  const listings = await readJson<Listing[]>(KEYS.listings, []);
-  return [...listings].sort((a, b) => b.createdAt - a.createdAt);
+  const snap = await getDocs(query(listingsCol, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Listing);
 }
 
 export async function getListingById(id: string): Promise<Listing | null> {
-  const listings = await readJson<Listing[]>(KEYS.listings, []);
-  return listings.find((l) => l.id === id) ?? null;
+  const snap = await getDoc(doc(db, "listings", id));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Listing) : null;
 }
 
 export async function getListingsByOwner(ownerId: string): Promise<Listing[]> {
-  const listings = await getListings();
-  return listings.filter((l) => l.ownerId === ownerId);
+  const snap = await getDocs(query(listingsCol, where("ownerId", "==", ownerId)));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Listing)
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function createListing(
   data: Omit<Listing, "id" | "createdAt" | "status">
 ): Promise<Listing> {
-  const listings = await readJson<Listing[]>(KEYS.listings, []);
-  const listing: Listing = {
-    ...data,
-    id: uid("listing"),
-    createdAt: Date.now(),
-    status: "available",
-  };
-  listings.push(listing);
-  await writeJson(KEYS.listings, listings);
-  return listing;
+  const payload = { ...data, createdAt: Date.now(), status: "available" as const };
+  const ref = await addDoc(listingsCol, payload);
+  return { id: ref.id, ...payload };
 }
 
 export async function setListingStatus(
   id: string,
   status: Listing["status"]
 ): Promise<void> {
-  const listings = await readJson<Listing[]>(KEYS.listings, []);
-  const idx = listings.findIndex((l) => l.id === id);
-  if (idx === -1) return;
-  listings[idx] = { ...listings[idx], status };
-  await writeJson(KEYS.listings, listings);
+  await updateDoc(doc(db, "listings", id), { status });
 }
 
 export async function deleteListing(id: string): Promise<void> {
-  const listings = await readJson<Listing[]>(KEYS.listings, []);
-  await writeJson(
-    KEYS.listings,
-    listings.filter((l) => l.id !== id)
-  );
+  await deleteDoc(doc(db, "listings", id));
 }
 
 // ---------------------------------------------------------------------------
 // Conversations & messages
 // ---------------------------------------------------------------------------
 
+const conversationsCol = collection(db, "conversations");
+
 export async function getOrCreateConversation(
   listingId: string,
   userAId: string,
   userBId: string
 ): Promise<Conversation> {
-  const conversations = await readJson<Conversation[]>(KEYS.conversations, []);
-  const existing = conversations.find(
-    (c) =>
-      c.listingId === listingId &&
-      c.participantIds.includes(userAId) &&
-      c.participantIds.includes(userBId)
+  // Firestore can't query "array contains both of these" directly, but a
+  // listing only ever has a handful of conversations, so filter by listing
+  // + userAId (must be the caller — see firestore.rules, which can only
+  // verify a list query against fields the query itself constrains) then
+  // match the other participant client-side.
+  const snap = await getDocs(
+    query(
+      conversationsCol,
+      where("listingId", "==", listingId),
+      where("participantIds", "array-contains", userAId)
+    )
   );
-  if (existing) return existing;
+  const existing = snap.docs.find((d) => {
+    const c = d.data() as Omit<Conversation, "id">;
+    return c.participantIds.includes(userAId) && c.participantIds.includes(userBId);
+  });
+  if (existing) return { id: existing.id, ...(existing.data() as Omit<Conversation, "id">) };
 
-  const conversation: Conversation = {
-    id: uid("conv"),
+  const payload: Omit<Conversation, "id"> = {
     listingId,
     participantIds: [userAId, userBId],
     createdAt: Date.now(),
     lastMessageAt: Date.now(),
     tradeConfirmedBy: [],
   };
-  conversations.push(conversation);
-  await writeJson(KEYS.conversations, conversations);
-  return conversation;
+  const ref = await addDoc(conversationsCol, payload);
+  return { id: ref.id, ...payload };
 }
 
-export async function getConversationsForUser(
-  userId: string
-): Promise<Conversation[]> {
-  const conversations = await readJson<Conversation[]>(KEYS.conversations, []);
-  return conversations
-    .filter((c) => c.participantIds.includes(userId))
+export async function getConversationsForUser(userId: string): Promise<Conversation[]> {
+  const snap = await getDocs(
+    query(conversationsCol, where("participantIds", "array-contains", userId))
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Conversation)
     .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 }
 
-export async function getConversationById(
-  id: string
-): Promise<Conversation | null> {
-  const conversations = await readJson<Conversation[]>(KEYS.conversations, []);
-  return conversations.find((c) => c.id === id) ?? null;
+export async function getConversationById(id: string): Promise<Conversation | null> {
+  const snap = await getDoc(doc(db, "conversations", id));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Conversation) : null;
+}
+
+function messagesCol(conversationId: string) {
+  return collection(db, "conversations", conversationId, "messages");
 }
 
 export async function getMessages(conversationId: string): Promise<Message[]> {
-  const messages = await readJson<Message[]>(KEYS.messages, []);
-  return messages
-    .filter((m) => m.conversationId === conversationId)
-    .sort((a, b) => a.createdAt - b.createdAt);
+  const snap = await getDocs(
+    query(messagesCol(conversationId), orderBy("createdAt", "asc"))
+  );
+  return snap.docs.map(
+    (d) => ({ id: d.id, conversationId, ...d.data() }) as Message
+  );
 }
 
 export async function sendMessage(
@@ -223,29 +257,17 @@ export async function sendMessage(
   const trimmed = text.trim();
   if (!trimmed) throw new Error("Sporočilo ne more biti prazno.");
 
-  const messages = await readJson<Message[]>(KEYS.messages, []);
-  const message: Message = {
-    id: uid("msg"),
-    conversationId,
+  const createdAt = Date.now();
+  const ref = await addDoc(messagesCol(conversationId), {
     senderId,
     text: trimmed,
-    createdAt: Date.now(),
-  };
-  messages.push(message);
-  await writeJson(KEYS.messages, messages);
-
-  const conversations = await readJson<Conversation[]>(KEYS.conversations, []);
-  const idx = conversations.findIndex((c) => c.id === conversationId);
-  if (idx !== -1) {
-    conversations[idx] = {
-      ...conversations[idx],
-      lastMessageAt: message.createdAt,
-      lastMessagePreview: trimmed,
-    };
-    await writeJson(KEYS.conversations, conversations);
-  }
-
-  return message;
+    createdAt,
+  });
+  await updateDoc(doc(db, "conversations", conversationId), {
+    lastMessageAt: createdAt,
+    lastMessagePreview: trimmed,
+  });
+  return { id: ref.id, conversationId, senderId, text: trimmed, createdAt };
 }
 
 export type ConfirmTradeResult = {
@@ -258,43 +280,47 @@ export type ConfirmTradeResult = {
 /**
  * Records that `userId` confirms the trade in `conversationId`. Once both
  * participants have confirmed, the listing is marked as traded and each
- * participant is awarded one radish 🫜.
+ * participant is awarded one radish 🫜. Runs as a transaction so two
+ * near-simultaneous confirmations can't race each other.
  */
 export async function confirmTrade(
   conversationId: string,
   userId: string
 ): Promise<ConfirmTradeResult> {
-  const conversations = await readJson<Conversation[]>(KEYS.conversations, []);
-  const idx = conversations.findIndex((c) => c.id === conversationId);
-  if (idx === -1) throw new Error("Pogovor ne obstaja.");
+  const conversationRef = doc(db, "conversations", conversationId);
 
-  const conversation = conversations[idx];
-  if (!conversation.participantIds.includes(userId)) {
-    throw new Error("Nisi udeležen/-a v tem pogovoru.");
-  }
+  const result = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(conversationRef);
+    if (!snap.exists()) throw new Error("Pogovor ne obstaja.");
+    const conversation = { id: snap.id, ...(snap.data() as Omit<Conversation, "id">) };
 
-  const alreadyConfirmed = conversation.tradeConfirmedBy.includes(userId);
-  const tradeConfirmedBy = alreadyConfirmed
-    ? conversation.tradeConfirmedBy
-    : [...conversation.tradeConfirmedBy, userId];
+    if (!conversation.participantIds.includes(userId)) {
+      throw new Error("Nisi udeležen/-a v tem pogovoru.");
+    }
 
-  const updated: Conversation = { ...conversation, tradeConfirmedBy };
-  conversations[idx] = updated;
-  await writeJson(KEYS.conversations, conversations);
+    const alreadyConfirmed = conversation.tradeConfirmedBy.includes(userId);
+    const tradeConfirmedBy = alreadyConfirmed
+      ? conversation.tradeConfirmedBy
+      : [...conversation.tradeConfirmedBy, userId];
 
-  if (alreadyConfirmed) {
-    return { conversation: updated, completed: false };
-  }
+    if (!alreadyConfirmed) {
+      tx.update(conversationRef, { tradeConfirmedBy });
+    }
 
-  const bothConfirmed = conversation.participantIds.every((id) =>
-    tradeConfirmedBy.includes(id)
-  );
-  if (!bothConfirmed) {
-    return { conversation: updated, completed: false };
-  }
+    const bothConfirmed = conversation.participantIds.every((id) =>
+      tradeConfirmedBy.includes(id)
+    );
 
-  await setListingStatus(conversation.listingId, "traded");
-  for (const participantId of conversation.participantIds) {
+    return {
+      conversation: { ...conversation, tradeConfirmedBy },
+      completed: !alreadyConfirmed && bothConfirmed,
+    };
+  });
+
+  if (!result.completed) return result;
+
+  await setListingStatus(result.conversation.listingId, "traded");
+  for (const participantId of result.conversation.participantIds) {
     const participant = await getUserById(participantId);
     if (participant) {
       await updateUser(participantId, {
@@ -308,78 +334,89 @@ export async function confirmTrade(
     "🫜 Zamenjava je potrjena z obeh strani! Oba sta prejela redkvico."
   );
 
-  return { conversation: updated, completed: true };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
-// Demo seed data (first launch only) so the browse screen isn't empty.
+// Demo seed data (first launch only, shared across every device) so the
+// browse screen isn't empty on a fresh Firebase project.
 // ---------------------------------------------------------------------------
+
+const DEMO_EMAIL = "demo@vrt.si";
+const DEMO_PASSWORD = "demo1234";
+// Local, per-device bookkeeping only — *what* gets seeded lives in Firebase
+// and is shared; this flag just stops this device from repeating the
+// check (and its sign-in/out side effect) on every single launch.
+const SEEDED_FLAG_KEY = "@mobile1/seed-checked";
 
 export async function seedDemoDataOnce(): Promise<void> {
-  const already = await AsyncStorage.getItem(KEYS.seeded);
-  if (already) return;
+  if (await AsyncStorage.getItem(SEEDED_FLAG_KEY)) return;
+  await AsyncStorage.setItem(SEEDED_FLAG_KEY, "1");
 
-  const users = await readJson<User[]>(KEYS.users, []);
-  if (users.length === 0) {
-    // Demo LISTINGS need real coordinates to be meaningful pins on the map —
-    // but the demo USER intentionally gets no location of their own. That
-    // field represents "where I am right now" and must only ever come from
-    // a real GPS fix; seeding it here previously made a fetch failure look
-    // like the app had (wrongly) detected Ljubljana.
-    const ljubljana = { latitude: 46.0569, longitude: 14.5058, label: "Ljubljana" };
-    const demoUser: User = {
-      id: uid("user"),
-      name: "Vrtnarija Sonček",
-      email: "demo@vrt.si",
-      password: "demo1234",
-      createdAt: Date.now(),
-      radishCount: 0,
-    };
-    users.push(demoUser);
-    await writeJson(KEYS.users, users);
+  // Never touch an active session. The demo-account existence check below
+  // signs in/out as a side effect, which would otherwise silently knock out
+  // whoever's real session was persisted on this device.
+  const initialFirebaseUser = await new Promise<FirebaseUser | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      unsubscribe();
+      resolve(u);
+    });
+  });
+  if (initialFirebaseUser) return;
 
-    const listings = await readJson<Listing[]>(KEYS.listings, []);
-    const demoListings: Listing[] = [
-      {
-        id: uid("listing"),
-        ownerId: demoUser.id,
-        title: "Domači paradižnik",
-        description: "Zrel, sočen paradižnik iz vrta, brez škropiv.",
-        quantity: "~3 kg",
-        category: "Zelenjava",
-        wantedInExchange: "Jabolka ali jajca",
-        location: ljubljana,
-        createdAt: Date.now(),
-        status: "available",
-      },
-      {
-        id: uid("listing"),
-        ownerId: demoUser.id,
-        title: "Sveža bučka",
-        description: "Nekaj kg buč, ravno smo obrali.",
-        quantity: "5 kg",
-        category: "Zelenjava",
-        wantedInExchange: "Karkoli sezonsko",
-        location: ljubljana,
-        createdAt: Date.now(),
-        status: "available",
-      },
-      {
-        id: uid("listing"),
-        ownerId: demoUser.id,
-        title: "Jabolka Golden",
-        description: "Presežek jabolk iz sadovnjaka.",
-        quantity: "10 kg",
-        category: "Sadje",
-        wantedInExchange: "Zelenjava ali med",
-        location: { latitude: 46.15, longitude: 14.55, label: "Kranj" },
-        createdAt: Date.now(),
-        status: "available",
-      },
-    ];
-    listings.push(...demoListings);
-    await writeJson(KEYS.listings, listings);
+  try {
+    // Demo account already exists → someone (this device or another) has
+    // already seeded; nothing to do. Sign back out immediately — this is
+    // only a side-effect-free "does this exist" check.
+    await signInWithEmailAndPassword(auth, DEMO_EMAIL, DEMO_PASSWORD);
+    await signOut(auth);
+    return;
+  } catch (e) {
+    const code = (e as { code?: string } | null)?.code;
+    if (code !== "auth/invalid-credential" && code !== "auth/user-not-found") {
+      // Some other problem (e.g. offline) — don't attempt to seed now.
+      return;
+    }
   }
 
-  await AsyncStorage.setItem(KEYS.seeded, "1");
+  try {
+    const demoUser = await registerUser("Vrtnarija Sonček", DEMO_EMAIL, DEMO_PASSWORD);
+    const ljubljana = { latitude: 46.0569, longitude: 14.5058, label: "Ljubljana" };
+
+    await createListing({
+      ownerId: demoUser.id,
+      title: "Domači paradižnik",
+      description: "Zrel, sočen paradižnik iz vrta, brez škropiv.",
+      quantity: "~3 kg",
+      category: "Zelenjava",
+      wantedInExchange: "Jabolka ali jajca",
+      location: ljubljana,
+    });
+    await createListing({
+      ownerId: demoUser.id,
+      title: "Sveža bučka",
+      description: "Nekaj kg buč, ravno smo obrali.",
+      quantity: "5 kg",
+      category: "Zelenjava",
+      wantedInExchange: "Karkoli sezonsko",
+      location: ljubljana,
+    });
+    await createListing({
+      ownerId: demoUser.id,
+      title: "Jabolka Golden",
+      description: "Presežek jabolk iz sadovnjaka.",
+      quantity: "10 kg",
+      category: "Sadje",
+      wantedInExchange: "Zelenjava ali med",
+      location: { latitude: 46.15, longitude: 14.55, label: "Kranj" },
+    });
+  } catch {
+    // Seeding is a nice-to-have, not required for the app to function —
+    // never let a failure here block startup.
+  } finally {
+    // registerUser signs us in as the demo account as a side effect; leave
+    // the app logged out for a fresh launch, same as before seeding ran.
+    await signOut(auth).catch(() => {});
+  }
 }
+

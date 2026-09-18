@@ -5,10 +5,10 @@ export type GeoPoint = {
 };
 
 export type User = {
+  /** Firebase Authentication uid — also the Firestore doc id under `users`. */
   id: string;
   name: string;
   email: string;
-  password: string; // demo-only local auth, never do this in production
   avatarUri?: string;
   location?: GeoPoint;
   createdAt: number;
